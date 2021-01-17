@@ -154,8 +154,6 @@ async function procMess(message) {
     const options = ['--username=user', '--password=hunter2']
     youtubeDl.getInfo(youtubeId, options, function (err, info) {
 
-      console.log(info);
-
       const minutos = info.duration.replace(":", "");
 
       if (minutos > 1000) {
@@ -357,18 +355,6 @@ const processMessage = (message) =>
 async function start(client) {
   cl = client;
   queue.start();
-
-  const allOpenChats = await client.getAllChatIds();
-  console.log(allOpenChats);
-
-  //delete all chats
-  allOpenChats.forEach(removeAllchats);
-  function removeAllchats(numeroId) {
-    client.deleteChat(numeroId);
-  }
-
-  const unreadMessages = await client.getAllUnreadMessages();
-  unreadMessages.forEach(processMessage);
   client.onMessage(processMessage);
 }
 
