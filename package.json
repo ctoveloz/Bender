@@ -1,0 +1,24 @@
+{
+  "name": "Bender1701",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@open-wa/wa-automate": "^3.1.13",
+    "axios": "^0.21.1",
+    "cheerio": "^1.0.0-rc.5",
+    "csv-writer": "^1.6.0",
+    "mime-types": "^2.1.28",
+    "moment": "^2.29.1",
+    "querystring": "^0.2.0",
+    "rimraf": "^3.0.2",
+    "youtube-dl": "^3.1.0",
+    "youtube-mp3-downloader": "^0.7.6"
+  }
+}
