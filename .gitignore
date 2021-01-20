@@ -1,3 +1,5 @@
 node_modules/
+.node-persist/
 mp3/*
 registrados/*
+debug.log

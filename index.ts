@@ -26,7 +26,7 @@ const csvWriter = createCsvWriter({
 
 // Fila
 const queue = new PQueue({
-  concurrency: 2,
+  concurrency: 1,
   autoStart: false,
 });
 
@@ -40,6 +40,10 @@ let cl = null;
  * Process the message
  * @param {import("@open-wa/wa-automate").Message} message
  */
+
+//array of senders
+const obj = [];
+
 async function procMess(message) {
 
   //VARIAVEIS
@@ -48,15 +52,85 @@ async function procMess(message) {
   const messageSender = message.body;
 
 
-      //somente o numero
-      const regNumberPhone = senderId.toString().replace('@c.us', '');
+  /*********************
+    *
+    *
+    *  COMEÇO FUNÇÃO BLOQUEIO
+    * 
+    * *****************/
+  const blockSender = function () {
+    //registra sender que usou o serviço
+    var holder = {};
+    obj.forEach(function (d) {
+      if (holder.hasOwnProperty(d.id)) {
+        holder[d.id] = holder[d.id] + d.value;
+      } else {
+        holder[d.id] = d.value;
+      }
+    });
+    var obj2 = [];
+    for (var prop in holder) {
+      obj2.push({ id: prop, value: holder[prop] });
+    }
+
+    // filtro retorna historico sender
+    var id_filter = senderId;
+    var filtered = obj2.filter(function (item) {
+      return id_filter.indexOf(item.id) !== -1;
+    });
+
+    // Bloqueia sender que usou o serviço por mais de 5x
+    for (var i = 0; i < filtered.length; i++) {
+      if (filtered[i].value >= 5) {
+
+        var id = filtered[0].id;
+
+        cl.sendText(message.from, '📵 Você usou o seu limite grátis disponivel, você podera usar novamente em 30 minutos.\n 🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* quando for desbloqueado.');
+
+        console.log(id + ' Foi Bloqueado');
+
+        //bloqueia contato sender
+        setTimeout(function () {
+          cl.contactBlock(message.from);
+        }, 100);
+
+        // Desbloqueia sender
+        setTimeout(function () {
+          cl.contactUnblock(message.from);
+
+          console.log(id + ' Foi Desbloqueado');
+
+          //deleta historico sender, sempre 1 numero a mais que o limite de bloqueio
+          for (var i = 0; i < obj.length; i++) {
+            if (obj[i].id == id) {
+              obj.splice(i, 6);
+              break;
+            }
+          }
+
+        }, 1800000);
+
+      }
+    }
+  }
+
+  /*********************
+   *
+   *
+   *  FIM FUNÇÃO BLOQUEIO
+   * 
+   * *****************/
+
+
+
+  //somente o numero
+  const regNumberPhone = senderId.toString().replace('@c.us', '');
 
 
   // YOUTUBE TO MP3
   if (message.body.includes('#mp3') && (message.body.includes('youtube.com')) || message.body.includes('#mp3') && (message.body.includes('youtu.be'))) {
 
-
-    console.log('retorno mp3 ok');
+    blockSender();
 
     /**** CONVERSOR YOUTUBE *****/
 
@@ -91,24 +165,29 @@ async function procMess(message) {
 
       console.log(senderId + ' converteu ' + musicTitle);
       cl.sendFile(message.from, './mp3/' + musicId + '.mp3', musicTitle, null, `${message.id}`).then(() => {
-        cl.sendText(message.from, 'Gostou? 😁 Compartilhe o Bender com seus amigos: https://api.whatsapp.com/send?phone=5598984966149&text=%23menu');
+
+        cl.sendText(message.from, '🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* .');
+
+        //deleta chat
+        cl.deleteChat(message.from);
+
+        //registra sender em obj
+        obj.push({ id: senderId, value: 1 });
+
+        //deleta mp3 apos meia hora
+        setTimeout(function () {
+
+          try {
+            rimraf('./mp3/' + musicId + '.mp3', function (e) {
+              console.log(musicId + 'deletado');
+            });
+          } catch (e) {
+            console.log(e);
+          }
+
+        }, 1800000);
+
       });
-      //registra sender no array obj
-      //obj.push({id: senderId, value: 1});
-
-      //deleta mp3 apos meia hora
-      setTimeout(function () {
-
-        try {
-          rimraf('./mp3/' + musicId + '.mp3', function (e) {
-            console.log(musicId + 'deletado');
-          });
-        } catch (e) {
-          console.log(e);
-        }
-
-      }, 1800000);
-
       //register DB
 
       /*
@@ -140,6 +219,8 @@ async function procMess(message) {
   //YOUTUBE TO MP4
   else if (message.body.includes('#mp4') && (message.body.includes('youtube.com')) || message.body.includes('#mp4') && (message.body.includes('youtu.be'))) {
 
+    blockSender();
+
     let url = message.body.replace("#mp4", "");
 
     //regex youtube
@@ -151,68 +232,93 @@ async function procMess(message) {
 
     const youtubeId = youtubeParser(url).toString();
 
-    const options = ['--username=user', '--password=hunter2']
-    youtubeDl.getInfo(youtubeId, options, function (err, info) {
-
-      const minutos = info.duration.replace(":", "");
-
-      if (minutos > 1000) {
-        cl.reply(message.from, `⚠️ O video tem que ter no máximo 10 minutos.`, `${message.id}`);
+    youtubeDl.getInfo(youtubeId, function (err, info) {
+      'use strict'
+      if (err) {
+        throw err
+      }
+      if (info === undefined || info === null) {
+        cl.reply(message.from, `⚠️ Erro, tente outro.`, `${message.id}`);
+        throw err
       } else {
 
-        try {
+        const minutos = info.duration.replace(":", "");
+        if (minutos > 800) {
+          cl.reply(message.from, `⚠️ O video tem que ter no máximo 8 minutos.`, `${message.id}`);
+        } else {
+    
+            cl.sendFileFromUrl(message.from, info.url, 'videoyt.mp4', '', `${message.id}`).then(() => {
 
-          cl.sendFileFromUrl(message.from, info.url, 'videoyt.mp4', '', `${message.id}`).then(() => {
-            cl.sendText(message.from, 'Gostou? 😁 Compartilhe o Bender com seus amigos: https://api.whatsapp.com/send?phone=5598984966149&text=%23menu');
-          });
+              cl.sendText(message.from, '🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* .');
 
+              //deleta chat
+              cl.deleteChat(message.from);
+      
+              //registra sender em obj
+              obj.push({ id: senderId, value: 1 });
 
-        } catch (err) {
-          console.log('erro ao enviar o video')
+            });
+  
         }
 
       }
 
+    })
 
+    /*
+    youtubeDl.exec(url, ['-x', '--audio-format', 'mp3'], {}, function exec(err,output) {
+      'use strict'
+      if (err) {
+        throw err
+      }
+      console.log(output);
+    })
+    */
 
-    }
-    )
   }
 
 
   // FACEBOOK Download
-  else if (message.body.includes('#fb') && message.body.includes('facebook.com')) {
+  else if (message.body.includes('#fb') && message.body.includes('facebook.com') || message.body.includes('#fb') && message.body.includes('fb.watch')) {
 
-    console.log('retorno facebook ok');
-
+    blockSender();
+    
     let url = message.body.replace("#fb", "");
 
     youtubeDl.getInfo(url, function (err, info) {
+      'use strict'
       if (err) {
-        cl.reply(message.from, `⚠️ Erro, talvez o video seja privado.`, `${message.id}`);
-      } else {
-        console.log('url:', info.url);
-
-        try {
-
-          cl.sendFileFromUrl(message.from, info.url, 'videofb.mp4', '', `${message.id}`).then(() => {
-            cl.sendText(message.from, 'Gostou? 😁 Compartilhe o Bender com seus amigos: https://api.whatsapp.com/send?phone=5598984966149&text=%23menu');
-          });
-
-
-        } catch (err) {
-          console.log('erro ao enviar o video')
-        }
+        cl.reply(message.from, `⚠️ Erro, tente outro.`, `${message.id}`);
+        throw err
       }
-    }
+      if (info === undefined || info === null) {
+        cl.reply(message.from, `⚠️ Erro, tente outro.`, `${message.id}`);
+      } else {
+      
+        cl.sendFileFromUrl(message.from, info.url, 'videofb.mp4', '', `${message.id}`).then(() => {
+
+          cl.sendText(message.from, '🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* .');
+
+          //deleta chat
+          cl.deleteChat(message.from);
+  
+          //registra sender em obj
+          obj.push({ id: senderId, value: 1 });
+
+        });
 
 
-    )
+      }
+
+    })
+
   }
 
 
   // INSTAGRAM Download
   else if (message.body.includes('#ig') && message.body.includes('instagram.com')) {
+
+    blockSender();
 
     let url_post = message.body.replace("#ig", "");
 
@@ -245,7 +351,15 @@ async function procMess(message) {
         console.log(ig[0])
 
         cl.sendFileFromUrl(message.from, ig[0], 'videofb.mp4', '', `${message.id}`).then(() => {
-          cl.sendText(message.from, 'Gostou? 😁 Compartilhe o Bender com seus amigos: https://api.whatsapp.com/send?phone=5598984966149&text=%23menu');
+
+          cl.sendText(message.from, '🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* .');
+
+          //deleta chat
+          cl.deleteChat(message.from);
+
+          //registra sender em obj
+          obj.push({ id: senderId, value: 1 });
+
         });
 
       })
@@ -267,13 +381,31 @@ async function procMess(message) {
       mediaData = await decryptMedia(message, uaOverride);
     }
     if (message.type === 'video' && message.caption.includes('#figurinha') || message.type === 'video' && message.caption.includes('#Figurinha') || message.type === 'video' && message.caption.includes('#FIGURINHA')) {
+      blockSender();
       const mp4_as_sticker = await cl.sendMp4AsSticker(message.from, mediaData).then(() => {
-        cl.sendText(message.from, 'Gostou? 😁 Compartilhe o Bender com seus amigos: https://api.whatsapp.com/send?phone=5598984966149&text=%23menu');
+
+        cl.sendText(message.from, '🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* .');
+
+        //deleta chat
+        cl.deleteChat(message.from);
+
+        //registra sender em obj
+        obj.push({ id: senderId, value: 1 });
+
       });
     }
     if (message.type === 'image' && message.caption.includes('#figurinha') || message.type === 'image' && message.caption.includes('#Figurinha') || message.type === 'image' && message.caption.includes('#FIGURINHA')) {
+      blockSender();
       await cl.sendImageAsSticker(message.from, `data:${message.mimetype};base64,${mediaData.toString('base64')}`).then(() => {
-        cl.sendText(message.from, 'Gostou? 😁 Compartilhe o Bender com seus amigos: https://api.whatsapp.com/send?phone=5598984966149&text=%23menu');
+
+        cl.sendText(message.from, '🏆 Ajude com uma doação e ganhe uma conta _ilimitada_ digite *#ajudar* .');
+
+        //deleta chat
+        cl.deleteChat(message.from);
+
+        //registra sender em obj
+        obj.push({ id: senderId, value: 1 });
+
       });
     }
 
@@ -285,12 +417,41 @@ async function procMess(message) {
     if (nameSender === undefined || nameSender === null) {
 
       cl.reply(message.from,
-        'Olá,\n Aqui estão alguns comandos do Bender. \n\n 🟢 *#mp4* _link video Youtube_ \n Baixa videos do Youtube. \n\n 🟢 *#ig* _link video Instagram_ \n Baixa videos do Instagram. \n\n 🟢 *#fb* _link video Facebook_ \n Baixa videos do Facebook. \n\n 🟢 *#mp3* _link video youtube_ \n Converte videos do youtube para mp3.\n\n ✨ Envie Imagem ou Video com a legenda *#figurinha* e transforme em figurinhas.\n\n 📧 *#cadastrar* _Receba as próximas novidades do Bender._  \n\n Status: 🟢ON / 🔴OFF \n\n\n Desenvolvido por: https://cmation.codes', `${message.id}`);
+        'Olá,\n Aqui estão os comandos do Bender. \n\n  *#ig* _link video Instagram_ \n Baixa videos do Instagram. \n\n  *#mp3* _link video youtube_ \n Converte videos do youtube para mp3.\n\n  *#mp4* _link video Youtube_ \n Baixa videos do Youtube.\n\n  *#fb* _link video Facebook_ \n Baixa videos do Facebook.\n\n ✨ Envie Imagem ou Video com a legenda *#figurinha* e transforme em figurinhas.\n\n 📧 *#cadastrar* _Receba as próximas novidades do Bender._  \n\n 🏆 *#ajudar* Ajude a manter o Bender.\n\n\n Desenvolvido por: https://cmation.codes', `${message.id}`);
 
     } else {
       cl.reply(message.from,
-        'Olá ' + nameSender + ',\n Aqui estão alguns comandos do Bender. \n\n *#mp4* _link video Youtube_ \n Baixa videos do Youtube. \n\n *#ig* _link video Instagram_ \n Baixa videos do Instagram. \n\n *#fb* _link video Facebook_ \n Baixa videos do Facebook. \n\n *#mp3* _link video youtube_ \n Converte videos do youtube para mp3.\n\n ✨ Envie Imagem ou Video com a legenda *#figurinha* e transforme em figurinhas.\n\n 📧 *#cadastrar* _Receba as próximas novidades do Bender._  \n\n\n Desenvolvido por: https://cmation.codes', `${message.id}`);
+        'Olá ' + nameSender + '\n Aqui estão os comandos do Bender. \n\n  *#ig* _link video Instagram_ \n Baixa videos do Instagram. \n\n  *#mp3* _link video youtube_ \n Converte videos do youtube para mp3.\n\n  *#mp4* _link video Youtube_ \n Baixa videos do Youtube.\n\n  *#fb* _link video Facebook_ \n Baixa videos do Facebook.\n\n ✨ Envie Imagem ou Video com a legenda *#figurinha* e transforme em figurinhas.\n\n 📧 *#cadastrar* _Receba as próximas novidades do Bender._  \n\n 🏆 *#ajudar* Ajude a manter o Bender.\n\n\n Desenvolvido por: https://cmation.codes', `${message.id}`);
     }
+  }
+
+  //teste bloqueio
+  else if (message.body.includes('#ajudar') || message.body.includes('#ajuda') || message.body.includes('#Ajuda') || message.body.includes('#Ajudar')) {
+
+    if (nameSender === undefined || nameSender === null) {
+      cl.reply(message.from,
+        'Olá 😊,\n Ajudando o Bender você pode usar todas as funções sem limites.\n\n Link de Doação: https://mpago.la/2e6YAtr \n\n Envie o comprovante para o email: cmation.codes@gmail.com', `${message.id}`);
+    } else {
+
+      cl.reply(message.from,
+        'Olá' + nameSender + ' 😊\n Ajudando o Bender você pode usar todas as funções sem limites.\n\n Link de Doação: https://mpago.la/2e6YAtr \n\n Envie o comprovante para o email: cmation.codes@gmail.com', `${message.id}`);
+
+    }
+
+  }
+
+  //teste bloqueio
+  else if (message.body.includes('#bloc')) {
+    blockSender();
+    cl.deleteChat(message.from);
+    obj.push({ id: senderId, value: 1 });
+  }
+
+  //teste bloqueio
+  else if (message.body.includes('#blocc')) {
+    blockSender();
+    cl.deleteChat(message.from);
+    obj.push({ id: senderId, value: 1 });
   }
 
   else if (message.body.includes('#cadastrar')) {
@@ -331,6 +492,10 @@ async function procMess(message) {
   else {
 
     cl.reply(message.from, '⚠️ Digite *#menu*', `${message.id}`);
+
+    setTimeout(function () {
+      cl.deleteChat(message.from);
+    }, 3600000);
 
   }
 

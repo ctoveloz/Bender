@@ -19,6 +19,7 @@
     "querystring": "^0.2.0",
     "rimraf": "^3.0.2",
     "youtube-dl": "^3.1.0",
-    "youtube-mp3-downloader": "^0.7.6"
+    "youtube-mp3-downloader": "^0.7.6",
+    "ytdl-core": "^4.4.3"
   }
 }
